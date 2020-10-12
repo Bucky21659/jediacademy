@@ -682,6 +682,7 @@ void Cmd_List_f (void)
 	for ( int c = 0; c < CMD_MAX_NUM; ++c )
 	{
 		cmd = cmd_functions + c;
+		if (!cmd->name || cmd->name[0] == '\0' || strlen(cmd->name) < 1) continue; //speedacademy fix..?
 		if (match && !Com_Filter(match, cmd->name, qfalse)) continue;
 		Com_Printf ("%s\n", cmd->name);
 		i++;
