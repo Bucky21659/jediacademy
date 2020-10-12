@@ -336,6 +336,12 @@ vmCvar_t	cg_strafeHelperSpeedScale;
 vmCvar_t	cg_strafeHelperSpeedY;
 vmCvar_t	cg_strafeHelperY;
 
+vmCvar_t	cg_showPos;
+vmCvar_t	cg_speedometer;
+vmCvar_t	cg_speedometerX;
+vmCvar_t	cg_speedometerY;
+vmCvar_t	cg_speedometerSize;
+
 typedef struct {
 	vmCvar_t	*vmCvar;
 	char		*cvarName;
@@ -458,6 +464,12 @@ static cvarTable_t cvarTable[] = {
 	{ &cg_strafeHelperSpeedScale, "cg_strafeHelperSpeedScale", "0.9", CVAR_ARCHIVE },
 	{ &cg_strafeHelperSpeedY, "cg_strafeHelperSpeedY", "0", CVAR_ARCHIVE },
 	{ &cg_strafeHelperY, "cg_strafeHelperY", "50", CVAR_ARCHIVE },
+
+	{ &cg_speedometer, "cg_speedometer", "0", CVAR_ARCHIVE },
+	{ &cg_speedometerX, "cg_speedometerX", "132", CVAR_ARCHIVE },
+	{ &cg_speedometerY, "cg_speedometerY", "459", CVAR_ARCHIVE },
+	{ &cg_speedometerSize, "cg_speedometerSize", "0.75", CVAR_ARCHIVE },
+	{ &cg_showPos, "cg_showPos", "0", 0 }, //CVAR_TEMP
 };
 
 static int cvarTableSize = sizeof( cvarTable ) / sizeof( cvarTable[0] );

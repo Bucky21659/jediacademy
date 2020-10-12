@@ -646,6 +646,12 @@ extern	vmCvar_t		cg_strafeHelperSpeedScale;
 extern	vmCvar_t		cg_strafeHelperSpeedY;
 extern	vmCvar_t		cg_strafeHelperY;
 
+extern	vmCvar_t		cg_showPos;
+extern	vmCvar_t		cg_speedometer;
+extern	vmCvar_t		cg_speedometerX;
+extern	vmCvar_t		cg_speedometerY;
+extern	vmCvar_t		cg_speedometerSize;
+
 void CG_NewClientinfo( int clientNum );
 //
 // cg_main.c

@@ -1634,6 +1634,188 @@ static void CG_DrawBatteryCharge( void )
 	}
 }
 
+//Speed-Academy start
+#define SPEEDOMETER_ENABLE			(1<<0)
+#define SPEEDOMETER_GROUNDSPEED		(1<<1)
+#define SPEEDOMETER_JUMPHEIGHT		(1<<2)
+#define SPEEDOMETER_JUMPDISTANCE	(1<<3)
+#define SPEEDOMETER_VERTICALSPEED	(1<<4)
+#define SPEEDOMETER_YAWSPEED		(1<<5)
+#define SPEEDOMETER_ACCELMETER		(1<<6)
+#define SPEEDOMETER_SPEEDGRAPH		(1<<7)
+#define SPEEDOMETER_KPH				(1<<8)
+#define SPEEDOMETER_MPH				(1<<9)
+#define SPEEDOMETER_TRACKTOPSPEED	(1<<10)
+
+static float cg_currentSpeed = 0.0f;
+static float cg_maxSpeed = 0.0f;
+static qboolean cg_firstTimeInAir = qtrue;
+static int cg_lastGroundTime = 0;
+static float cg_lastGroundSpeed = 0.0f;
+
+static float speedometerXPos = 132.0f;
+#define CG_SPEEDOMETER_QUAKEUNITS (!(cg_speedometer.integer & (SPEEDOMETER_KPH|SPEEDOMETER_MPH)))
+#define CG_SPEEDOMETER_FORMAT(x, y) !(cg_speedometer.integer & (SPEEDOMETER_KPH|SPEEDOMETER_MPH)) ? x : y
+#define SPEEDOMETER_GAP_WIDTH(offset)	((56 + offset) * cg_speedometerSize.value)
+static void CG_CalculateSpeed(centity_t *cent) {
+	playerState_t *ps = &cg.predicted_player_state;
+	//vec_t *velocity = (cent->currentState.clientNum == cg.clientNum ? ps->velocity : cent->currentState.pos.trDelta);
+	vec_t *velocity = ps->velocity;
+
+	cg_currentSpeed = (float)sqrt(velocity[0] * velocity[0] + velocity[1] * velocity[1]); // is this right?
+
+	if ((cg_speedometer.integer & SPEEDOMETER_TRACKTOPSPEED))
+	{
+		if (!cg.thisFrameTeleport && !(ps->pm_flags & PMF_RESPAWNED) && ps->pm_type != PM_NOCLIP) {
+			if (cg_currentSpeed > cg_maxSpeed)
+				cg_maxSpeed = cg_currentSpeed;
+		}
+		else {
+			cg_maxSpeed = 0.0f;
+		}
+		/*if (cg.currentSpeed > cg.maxSpeed)
+			cg.maxSpeed = (int)(cg.currentSpeed + 0.5f);*/
+	}
+}
+
+static float CG_Speedometer_Units(float speed) {
+	if (CG_SPEEDOMETER_QUAKEUNITS)
+		return speed; //floorf(currentSpeed + 0.5f));
+
+	if (cg_speedometer.integer & SPEEDOMETER_KPH)
+		return (speed * 0.05f);
+
+	if (cg_speedometer.integer & SPEEDOMETER_MPH)
+		return (speed * 0.03106855f);
+
+	return speed;
+}
+
+static void CG_Speedometer_ColorTint(float currentSpeed, float baseSpeed, vec4_t colorSpeed) 
+{ //tints color from white when currentSpeed is greater than baseSpeed
+	if (currentSpeed > baseSpeed) {
+		colorSpeed[1] = 1 / ((currentSpeed / baseSpeed)*(currentSpeed / baseSpeed));
+		colorSpeed[2] = 1 / ((currentSpeed / baseSpeed)*(currentSpeed / baseSpeed));
+	}
+}
+
+#define ACCEL_SAMPLES 125//16
+static void CG_Speedometer(centity_t *cent)
+{
+	//const char *accelStr, *accelStr2, *accelStr3;
+	char accelStr[4] = { 0 }, c = '\xb5';
+	float *colorAccel = colorTable[CT_WHITE];
+	char speedStr[32] = { 0 };
+	const float	spaceWidth = cgi_R_Font_StrLenPixels(" ", cg_speedometerSize.value, cgs.media.qhFontMedium);
+	const float	speedWidth = spaceWidth*5;
+	const int textstyle = 0x80000000; //STYLE_DROPSHADOW; //(ITEM_ALIGN_LEFT|ITEM_TEXTSTYLE_OUTLINED);
+	vec4_t colorSpeed = { 1, 1, 1, 1 };
+	static float lastSpeed = 0, previousAccels[ACCEL_SAMPLES] = { 0 };
+	const float accel = cg_currentSpeed - lastSpeed;
+	float total, avgAccel;
+	int t, i;
+	unsigned int frameTime;
+	static unsigned int index;
+	static int	previous, lastupdate;
+
+	lastSpeed = cg_currentSpeed;
+
+	CG_Speedometer_ColorTint(cg_currentSpeed, cg.predicted_player_state.speed, colorSpeed);
+
+	t = cgi_Milliseconds();
+	frameTime = t - previous;
+	previous = t;
+	if (t - lastupdate > 5)	//don't sample faster than this
+	{
+		lastupdate = t;
+		previousAccels[index % ACCEL_SAMPLES] = accel;
+		index++;
+	}
+
+	total = 0;
+	for (i = 0; i < ACCEL_SAMPLES; i++) {
+		total += previousAccels[i];
+	}
+	if (!total) {
+		total = 1;
+	}
+	avgAccel = total / (float)ACCEL_SAMPLES - 0.0625f;//fucking why does it offset by this number
+
+	if (avgAccel > 0.0f)
+		colorAccel = colorTable[CT_GREEN];
+	else if (avgAccel < 0.0f)
+		colorAccel = colorTable[CT_RED];
+
+	if (cg_speedometer.integer & SPEEDOMETER_KPH)
+		c = 'k';
+	else if (cg_speedometer.integer & SPEEDOMETER_MPH)
+		c = 'm';
+
+	Com_sprintf(accelStr, sizeof(accelStr), "%c: ", c);
+
+	//should rlly jus fix the whitespacing dumpster fire
+	cgi_R_Font_DrawString(speedometerXPos, cg_speedometerY.value, accelStr, colorAccel, (cgs.media.qhFontMedium | textstyle), -1, cg_speedometerSize.value);
+	speedometerXPos += cgi_R_Font_StrLenPixels(accelStr, cgs.media.qhFontMedium, cg_speedometerSize.value);
+	Com_sprintf(speedStr, sizeof(speedStr), CG_SPEEDOMETER_FORMAT("%.0f", "%.1f"), CG_Speedometer_Units(cg_currentSpeed));
+	cgi_R_Font_DrawString(speedometerXPos, cg_speedometerY.value, speedStr, colorSpeed, (cgs.media.qhFontMedium | textstyle), -1, cg_speedometerSize.value);
+
+	/*if ((cg_speedometer.integer & SPEEDOMETER_ACCELMETER) || (cg_strafeHelper.integer & SHELPER_ACCELMETER))
+		CG_DrawAccelMeter(cg_speedometerY.value - (CG_Text_Height(speedStr, cg_speedometerSize.value/2, FONT_MEDIUM)+ spaceWidth));*/
+
+	if (cg_speedometer.integer & SPEEDOMETER_TRACKTOPSPEED) {
+		speedometerXPos += (spaceWidth*8);
+		if (cg_maxSpeed > 0.0f) {
+			Com_sprintf(speedStr, sizeof(speedStr), CG_SPEEDOMETER_FORMAT("(%.0f)", "(%.1f)"), CG_Speedometer_Units(cg_maxSpeed));
+			cgi_R_Font_DrawString(speedometerXPos, cg_speedometerY.value, speedStr, colorSpeed, (cgs.media.qhFontMedium | textstyle), -1, cg_speedometerSize.value);
+		}
+
+		speedometerXPos += (spaceWidth*2);
+	}
+
+	speedometerXPos += SPEEDOMETER_GAP_WIDTH(0);
+
+	if (cg_speedometer.integer & SPEEDOMETER_GROUNDSPEED) {
+		if (cg.predicted_player_state.groundEntityNum != ENTITYNUM_NONE || cg.predicted_player_state.velocity[2] < 0) { //On ground or Moving down
+			cg_firstTimeInAir = qfalse;
+		}
+		else if (!cg_firstTimeInAir) { //Moving up for first time
+			cg_firstTimeInAir = qtrue;
+			cg_lastGroundSpeed = cg_currentSpeed;
+			cg_lastGroundTime = cg.time;
+		}
+		
+		if (cg_lastGroundTime > (cg.time - 1500)) {
+			if (cg_lastGroundSpeed)
+			{
+				for (i = 0; i < 4; i++) colorSpeed[i] = 1.0f;
+				CG_Speedometer_ColorTint(cg_lastGroundSpeed, cg.predicted_player_state.speed, colorSpeed);
+
+				Com_sprintf(speedStr, sizeof(speedStr), CG_SPEEDOMETER_FORMAT("%.0f", "%.1f"), CG_Speedometer_Units(cg_lastGroundSpeed));
+				cgi_R_Font_DrawString(speedometerXPos, cg_speedometerY.value, speedStr, colorSpeed, (cgs.media.qhFontMedium | textstyle), -1, cg_speedometerSize.value);
+			}
+		}
+
+		speedometerXPos += SPEEDOMETER_GAP_WIDTH(0);
+	}
+}
+
+static void CG_DrawShowPos(void) {
+	char str[MAX_STRING_CHARS] = { 0 };
+	const playerState_t *ps = &cg.predicted_player_state;
+	float vel = sqrtf(cg_currentSpeed * cg_currentSpeed + ps->velocity[2] * ps->velocity[2]);
+
+	Com_sprintf(str, sizeof(str),
+				"pos:   %.2f   %.2f   %.2f\n"
+				"ang:   %.2f   %.2f   %.2f\n"
+				"vel:   %.2f",
+				(float)ps->origin[0], (float)ps->origin[1], (float)ps->origin[2],
+				(float)ps->viewangles[PITCH], (float)ps->viewangles[YAW], (float)ps->viewangles[ROLL],
+				vel);
+
+	cgi_R_Font_DrawString(SCREEN_WIDTH - 340, 0, str, colorTable[CT_WHITE], (cgs.media.qhFontSmall | 0x80000000), -1, 0.6f);
+}
+//Speed-Academy end
+
 /*
 ================
 CG_DrawHUD
@@ -1730,6 +1912,17 @@ static void CG_DrawHUD( centity_t *cent )
 			CG_DrawAmmo(cent,sectionXPos,sectionYPos);
 		}
 //		CG_DrawMessageLit(cent,x,y);
+	}
+
+	//Speed-Academy
+	if (cg_showPos.integer) {
+		CG_DrawShowPos();
+	}
+
+	if (cg_speedometer.integer & SPEEDOMETER_ENABLE) {
+		speedometerXPos = cg_speedometerX.value;
+		CG_CalculateSpeed(cent);
+		CG_Speedometer(cent);
 	}
 }
 
